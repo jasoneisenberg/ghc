@@ -53,3 +53,14 @@ test('T2762',
 test('T4018',
      [ only_ways(['optasm']), extra_run_opts('+RTS -M10m -RTS') ],
      compile_and_run, ['-fno-state-hack'])
+
+test('T4029',
+     [stats_num_field('peak_megabytes_allocated',
+          [(wordsize(64), 76, 10)]),
+            # 2016-02-23: 76 (amd64/Linux)           INITIAL
+      stats_num_field('max_bytes_used',
+          [(wordsize(64), 27364800, 5)])
+            # 2016-02-23: 27364800 (amd64/Linux)     INITIAL
+      ],
+     ghci_script,
+     ['T4029.script'])
