@@ -1451,7 +1451,11 @@ initIfaceTcRn thing_inside
         ; let { if_env = IfGblEnv {
                             if_rec_types = Just (tcg_mod tcg_env, get_type_env)
                          }
-              ; get_type_env = readTcRef (tcg_type_env_var tcg_env) }
+              ; get_type_env = case tcg_self_boot tcg_env of
+                                   SelfBoot { sb_mds = mds } ->
+                                       return (md_types mds)
+                                   NoSelfBoot ->
+                                       readTcRef (tcg_type_env_var tcg_env) }
         ; setEnvs (if_env, ()) thing_inside }
 
 initIfaceCheck :: HscEnv -> IfG a -> IO a
