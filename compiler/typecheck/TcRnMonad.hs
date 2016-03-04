@@ -1449,10 +1449,20 @@ initIfaceTcRn :: IfG a -> TcRn a
 initIfaceTcRn thing_inside
   = do  { tcg_env <- getGblEnv
         ; let { if_env = IfGblEnv {
-                            if_rec_types = Just (tcg_mod tcg_env, get_type_env)
+                            if_rec_types = rec_types
                          }
+              ; rec_types = case tcg_self_boot tcg_env of
+                                SelfBoot {} ->
+                                    Just (tcg_mod tcg_env, get_type_env)
+                                NoSelfBoot -> Nothing
               ; get_type_env = readTcRef (tcg_type_env_var tcg_env) }
-        ; setEnvs (if_env, ()) thing_inside }
+              -- ; get_type_env = case tcg_self_boot tcg_env of
+              --                      SelfBoot { sb_mds = mds } ->
+              --                          return (md_types mds)
+              --                      NoSelfBoot ->
+              --                          readTcRef (tcg_type_env_var tcg_env) }
+        ; rec_types `seq` setEnvs (if_env, ()) thing_inside }
+
 
 initIfaceCheck :: HscEnv -> IfG a -> IO a
 -- Used when checking the up-to-date-ness of the old Iface
