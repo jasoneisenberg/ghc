@@ -161,7 +161,7 @@ NB: The res_ty is always deeply skolemised.
 
 tcExpr :: HsExpr Name -> ExpRhoType -> TcM (HsExpr TcId)
 tcExpr (HsVar (L _ name)) res_ty = tcCheckId name res_ty
-tcExpr (HsUnboundVar v)   res_ty = tcUnboundId v res_ty
+tcExpr (HsUnboundVar uv)  res_ty = tcUnboundId uv res_ty
 
 tcExpr (HsApp e1 e2) res_ty
   = do { (wrap, fun, args) <- tcApp Nothing e1 [e2] res_ty
@@ -1577,7 +1577,7 @@ tc_infer_id lbl id_name
       | otherwise                  = return ()
 
 
-tcUnboundId :: OccName -> ExpRhoType -> TcM (HsExpr TcId)
+tcUnboundId :: UnboundVar -> ExpRhoType -> TcM (HsExpr TcId)
 -- Typechedk an occurrence of an unbound Id
 --
 -- Some of these started life as a true hole "_".  Others might simply
@@ -1586,16 +1586,16 @@ tcUnboundId :: OccName -> ExpRhoType -> TcM (HsExpr TcId)
 -- We turn all of them into HsVar, since HsUnboundVar can't contain an
 -- Id; and indeed the evidence for the CHoleCan does bind it, so it's
 -- not unbound any more!
-tcUnboundId occ res_ty
+tcUnboundId unbound res_ty
  = do { ty <- newFlexiTyVarTy liftedTypeKind
+      ; let occ = unboundVarOcc unbound
       ; name <- newSysName occ
       ; let ev = mkLocalId name ty
       ; loc <- getCtLocM HoleOrigin Nothing
       ; let can = CHoleCan { cc_ev = CtWanted { ctev_pred = ty
                                               , ctev_dest = EvVarDest ev
                                               , ctev_loc  = loc}
-                           , cc_occ = occ
-                           , cc_hole = ExprHole }
+                           , cc_hole = ExprHole unbound }
       ; emitInsoluble can
       ; tcWrapResultO (UnboundOccurrenceOf occ) (HsVar (noLoc ev)) ty res_ty }
 
