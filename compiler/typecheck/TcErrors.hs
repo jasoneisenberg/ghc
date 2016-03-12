@@ -27,9 +27,11 @@ import TyCon
 import Class
 import DataCon
 import TcEvidence
+import HsExpr  ( UnboundVar(..) )
 import HsBinds ( PatSynBind(..) )
 import Name
-import RdrName ( lookupGRE_Name, GlobalRdrEnv, mkRdrUnqual )
+import RdrName ( lookupGlobalRdrEnv, lookupGRE_Name, GlobalRdrEnv
+               , mkRdrUnqual, isLocalGRE, greSrcSpan )
 import PrelNames ( typeableClassName, hasKey, ptrRepLiftedDataConKey
                  , ptrRepUnliftedDataConKey )
 import Id
@@ -53,6 +55,7 @@ import qualified GHC.LanguageExtensions as LangExt
 
 import Control.Monad    ( when )
 import Data.List        ( partition, mapAccumL, nub, sortBy )
+import qualified Data.Set as Set
 
 #if __GLASGOW_HASKELL__ > 710
 import Data.Semigroup   ( Semigroup )
@@ -853,45 +856,88 @@ mkIrredErr ctxt cts
 
 ----------------
 mkHoleError :: ReportErrCtxt -> Ct -> TcM ErrMsg
-mkHoleError ctxt ct@(CHoleCan { cc_occ = occ, cc_hole = hole_sort })
-  | isOutOfScopeCt ct  -- Out of scope variables, like 'a', where 'a' isn't bound
-                       -- Suggest possible in-scope variables in the message
-  = do { dflags  <- getDynFlags
-       ; rdr_env <- getGlobalRdrEnv
-       ; impInfo <- getImports
-       ; mkErrDocAt (RealSrcSpan (tcl_loc lcl_env)) $
-                    errDoc [out_of_scope_msg] []
-                           [unknownNameSuggestions dflags rdr_env
-                            (tcl_rdr lcl_env) impInfo (mkRdrUnqual occ)] }
+mkHoleError _ctxt ct@(CHoleCan { cc_hole = ExprHole (OutOfScope occ rdr_env0) })
+  -- Out-of-scope variables, like 'a', where 'a' isn't bound; suggest possible
+  -- in-scope variables in the message, and note inaccessible exact matches
+  = do { dflags   <- getDynFlags
+       ; imp_info <- getImports
+       ; let suggs_msg = unknownNameSuggestions dflags rdr_env0
+                                                (tcl_rdr lcl_env) imp_info rdr
+       ; rdr_env     <- getGlobalRdrEnv
+       ; splice_locs <- getTopLevelSpliceLocs
+       ; let match_msgs = mk_match_msgs rdr_env splice_locs
+       ; mkErrDocAt (RealSrcSpan err_loc) $
+                    errDoc [out_of_scope_msg] [] (match_msgs ++ [suggs_msg]) }
 
-  | otherwise  -- Explicit holes, like "_" or "_f"
+  where
+    rdr         = mkRdrUnqual occ
+    ct_loc      = ctLoc ct
+    lcl_env     = ctLocEnv ct_loc
+    err_loc     = tcl_loc lcl_env
+    hole_ty     = ctEvPred (ctEvidence ct)
+    boring_type = isTyVarTy hole_ty
+
+    out_of_scope_msg -- Print v :: ty only if the type has structure
+      | boring_type = hang herald 2 (ppr occ)
+      | otherwise   = hang herald 2 (pp_with_type occ hole_ty)
+
+    herald | isDataOcc occ = text "Data constructor not in scope:"
+           | otherwise     = text "Variable not in scope:"
+
+    -- Indicate if the out-of-scope variable exactly (and unambiguously) matches
+    -- a top-level binding in a later inter-splice group; we currently ignore
+    -- whether the types can be unified
+    mk_match_msgs rdr_env splice_locs
+      = let gres = filter isLocalGRE (lookupGlobalRdrEnv rdr_env occ)
+        in case gres of
+             [gre]
+               |  RealSrcSpan bind_loc <- greSrcSpan gre
+                  -- Find splice between the unbound variable and matching bind
+               ,  Just th_loc <- Set.lookupLE bind_loc splice_locs
+               ,  err_loc < th_loc
+               -> [mk_bind_scope_msg bind_loc th_loc]
+             _ -> []
+
+    mk_bind_scope_msg bind_loc th_loc
+      | is_th_bind
+      = hang (quotes (ppr occ) <+> parens (text "splice on" <+> th_rng))
+           2 (text "is not in scope before line" <+> int th_start_ln)
+      | otherwise
+      = hang (quotes (ppr occ) <+> bind_rng <+> text "is not in scope")
+           2 (text "before the splice on" <+> th_rng)
+      where
+        bind_rng = parens (text "line" <+> int bind_ln)
+        th_rng
+          | th_start_ln == th_end_ln = single
+          | otherwise                = multi
+        single = text "line"  <+> int th_start_ln
+        multi  = text "lines" <+> int th_start_ln <> text "-" <> int th_end_ln
+        bind_ln     = srcSpanStartLine bind_loc
+        th_start_ln = srcSpanStartLine th_loc
+        th_end_ln   = srcSpanEndLine   th_loc
+        is_th_bind = th_loc `containsSpan` bind_loc
+
+mkHoleError ctxt ct@(CHoleCan { cc_hole = hole })
+  -- Explicit holes, like "_" or "_f"
   = do { (ctxt, binds_msg, ct) <- relevantBindings False ctxt ct
                -- The 'False' means "don't filter the bindings"; see Trac #8191
        ; mkErrorMsgFromCt ctxt ct $
             important hole_msg `mappend` relevant_bindings binds_msg }
 
   where
-    ct_loc      = ctLoc ct
-    lcl_env     = ctLocEnv ct_loc
-    hole_ty     = ctEvPred (ctEvidence ct)
-    tyvars      = tyCoVarsOfTypeList hole_ty
-    boring_type = isTyVarTy hole_ty
+    occ     = holeOcc hole
+    hole_ty = ctEvPred (ctEvidence ct)
+    tyvars  = tyCoVarsOfTypeList hole_ty
 
-    out_of_scope_msg -- Print v :: ty only if the type has structure
-      | boring_type = hang herald 2 (ppr occ)
-      | otherwise   = hang herald 2 pp_with_type
-
-    pp_with_type = hang (pprPrefixOcc occ) 2 (dcolon <+> pprType hole_ty)
-    herald | isDataOcc occ = text "Data constructor not in scope:"
-           | otherwise     = text "Variable not in scope:"
-
-    hole_msg = case hole_sort of
-      ExprHole -> vcat [ hang (text "Found hole:")
-                            2 pp_with_type
-                       , tyvars_msg, expr_hole_hint ]
-      TypeHole -> vcat [ hang (text "Found type wildcard" <+> quotes (ppr occ))
-                            2 (text "standing for" <+> quotes (pprType hole_ty))
-                       , tyvars_msg, type_hole_hint ]
+    hole_msg = case hole of
+      ExprHole {} -> vcat [ hang (text "Found hole:")
+                               2 (pp_with_type occ hole_ty)
+                          , tyvars_msg, expr_hole_hint ]
+      TypeHole {} -> vcat [ hang (text "Found type wildcard" <+>
+                                  quotes (ppr occ))
+                               2 (text "standing for" <+>
+                                  quotes (pprType hole_ty))
+                          , tyvars_msg, type_hole_hint ]
 
     tyvars_msg = ppUnless (null tyvars) $
                  text "Where:" <+> vcat (map loc_msg tyvars)
@@ -922,6 +968,9 @@ mkHoleError ctxt ct@(CHoleCan { cc_occ = occ, cc_hole = hole_sort })
          else empty
 
 mkHoleError _ ct = pprPanic "mkHoleError" (ppr ct)
+
+pp_with_type :: OccName -> Type -> SDoc
+pp_with_type occ ty = hang (pprPrefixOcc occ) 2 (dcolon <+> pprType ty)
 
 ----------------
 mkIPErr :: ReportErrCtxt -> [Ct] -> TcM ErrMsg
