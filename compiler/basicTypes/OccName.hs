@@ -3,7 +3,7 @@
 (c) The GRASP/AQUA Project, Glasgow University, 1992-1998
 -}
 
-{-# LANGUAGE DeriveDataTypeable, BangPatterns #-}
+{-# LANGUAGE StandaloneDeriving, DeriveDataTypeable, BangPatterns #-}
 
 -- |
 -- #name_types#
@@ -386,6 +386,7 @@ instance Uniquable OccName where
   getUnique (OccName TcClsName fs) = mkTcOccUnique   fs
 
 newtype OccEnv a = A (UniqFM a)
+  deriving (Data, Typeable)
 
 emptyOccEnv :: OccEnv a
 unitOccEnv  :: OccName -> a -> OccEnv a
