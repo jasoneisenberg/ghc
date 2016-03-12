@@ -769,8 +769,7 @@ zonkExpr env (HsWrap co_fn expr)
        new_expr <- zonkExpr env1 expr
        return (HsWrap new_co_fn new_expr)
 
-zonkExpr _ (HsUnboundVar v)
-  = return (HsUnboundVar v)
+zonkExpr _ e@(HsUnboundVar {}) = return e
 
   -- nothing to do here. The payload is an LHsType, not a Type.
 zonkExpr _ e@(HsTypeOut {}) = return e

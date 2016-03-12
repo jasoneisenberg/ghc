@@ -29,6 +29,7 @@ import CoreSyn
 import Var
 import DynFlags ( gopt, GeneralFlag(Opt_PrintExplicitCoercions) )
 import Name
+import RdrName  ( GlobalRdrEnv )
 import BasicTypes
 import ConLike
 import SrcLoc
@@ -165,17 +166,40 @@ is Less Cool because
     typecheck do-notation with (>>=) :: m1 a -> (a -> m2 b) -> m2 b.)
 -}
 
+-- | An unbound variable; used for treating out-of-scope variables as
+-- expression holes
+data UnboundVar
+  = OutOfScope OccName GlobalRdrEnv
+        -- ^ An (unqualified) out-of-scope variable, together with the
+        -- GlobalRdrEnv with respect to which it is unbound.  When
+        -- generating possible in-scope alternatives for the error
+        -- message, the typechecker must use this GlobalRdrEnv, as the
+        -- then-current one might contain entries from additional inter-
+        -- splice groups (Trac #11680).
+  | TrueExprHole OccName
+        -- ^ A "true" expression hole (_ or _x)
+  deriving (Data, Typeable)
+
+instance Outputable UnboundVar where
+    ppr = ppr . unboundVarOcc
+
+unboundVarOcc :: UnboundVar -> OccName
+unboundVarOcc (OutOfScope occ _) = occ
+unboundVarOcc (TrueExprHole occ) = occ
+
 -- | A Haskell expression.
 data HsExpr id
   = HsVar     (Located id)   -- ^ Variable
 
                              -- See Note [Located RdrNames]
 
-  | HsUnboundVar OccName     -- ^ Unbound variable; also used for "holes" _, or _x.
-                             -- Turned from HsVar to HsUnboundVar by the renamer, when
-                             --   it finds an out-of-scope variable
-                             -- Turned into HsVar by type checker, to support deferred
-                             --   type errors.  (The HsUnboundVar only has an OccName.)
+  | HsUnboundVar UnboundVar  -- ^ Unbound variable; also used for "holes"
+                             --   (_ or _x).
+                             -- Turned from HsVar to HsUnboundVar by the
+                             --   renamer, when it finds an out-of-scope
+                             --   variable or hole.
+                             -- Turned into HsVar by type checker, to support
+                             --   deferred type errors.
 
   | HsRecFld (AmbiguousFieldOcc id) -- ^ Variable pointing to record selector
 
@@ -679,7 +703,7 @@ ppr_lexpr e = ppr_expr (unLoc e)
 
 ppr_expr :: forall id. OutputableBndr id => HsExpr id -> SDoc
 ppr_expr (HsVar (L _ v))  = pprPrefixOcc v
-ppr_expr (HsUnboundVar v) = pprPrefixOcc v
+ppr_expr (HsUnboundVar uv)= pprPrefixOcc (unboundVarOcc uv)
 ppr_expr (HsIPVar v)      = ppr v
 ppr_expr (HsOverLabel l)  = char '#' <> ppr l
 ppr_expr (HsLit lit)      = ppr lit
