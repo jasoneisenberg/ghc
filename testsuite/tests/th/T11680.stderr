@@ -1,0 +1,31 @@
+
+T11680.hs:14:7: error: Variable not in scope: noMatches :: Bool
+
+T11680.hs:19:7: error:
+    • Variable not in scope: abce :: [a]
+    • Perhaps you meant ‘abcd’ (line 22)
+
+T11680.hs:30:7: error:
+    • Variable not in scope: foo :: Int
+    • ‘foo’ (line 72) is in scope after the splice on line 68
+
+T11680.hs:37:7: error:
+    • Variable not in scope: bar :: ()
+    • ‘bar’ (line 82) is in scope after the splice on lines 78-80
+      Perhaps you meant one of these: ‘bat’ (line 40), ‘baz’ (line 43)
+
+T11680.hs:48:7: error:
+    • Variable not in scope: ns :: [Double]
+    • ‘ns’ is in scope beginning with the splice on lines 78-80
+
+T11680.hs:53:7: error:
+    • Variable not in scope: intercalate
+    • ‘intercalate’ (line 84) is in scope
+        after the splice on lines 78-80
+      Perhaps you meant ‘List.intercalate’ (imported from Data.List)
+
+T11680.hs:57:7: error:
+    • Variable not in scope: nub
+    • Perhaps you meant ‘List.nub’ (imported from Data.List)
+
+T11680.hs:62:7: error: Variable not in scope: x :: t0 -> Int
