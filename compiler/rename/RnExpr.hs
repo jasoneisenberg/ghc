@@ -343,7 +343,7 @@ wired-in. See the Notes about the NameSorts in Name.hs.
 -}
 
 rnExpr e@(HsStatic expr) = do
-    target <- fmap hscTarget getDynFlags
+    target <- hscTarget <$> getDynFlags
     case target of
       -- SPT entries are expected to exist in object code so far, and this is
       -- not the case in interpreted mode. See bug #9878.
