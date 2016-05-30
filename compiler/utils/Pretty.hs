@@ -952,9 +952,9 @@ data Style
           , ribbonsPerLine :: Float -- ^ Ratio of line length to ribbon length
           }
 
--- | The default style (@mode=PageMode, lineLength=100, ribbonsPerLine=1.5@).
+-- | The default style (@mode=PageMode, lineLength=80, ribbonsPerLine=1.2@).
 style :: Style
-style = Style { lineLength = 100, ribbonsPerLine = 1.5, mode = PageMode }
+style = Style { lineLength = 80, ribbonsPerLine = 1.2, mode = PageMode }
 
 -- | Rendering mode.
 data Mode = PageMode     -- ^ Normal
@@ -1078,7 +1078,7 @@ printDoc_ :: Mode -> Int -> Handle -> Doc -> IO ()
 printDoc_ LeftMode _ hdl doc
   = do { printLeftRender hdl doc; hFlush hdl }
 printDoc_ mode pprCols hdl doc
-  = do { fullRender mode pprCols 1.5 put done doc ;
+  = do { fullRender mode pprCols 1.2 put done doc ;
          hFlush hdl }
   where
     put (Chr c)  next = hPutChar hdl c >> next
