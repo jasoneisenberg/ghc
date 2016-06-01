@@ -372,6 +372,9 @@ loadInterface :: SDoc -> Module -> WhereFrom
 loadInterface doc_str mod from
   = do  {       -- Read the state
           (eps,hpt) <- getEpsAndHpt
+
+        ; updTopEnv (\env -> env { hsc_HPT = emptyHomePackageTable }) $ do {
+
         ; gbl_env <- getGblEnv
 
         ; traceIf (text "Considering whether to load" <+> ppr mod <+> ppr from)
@@ -488,7 +491,7 @@ loadInterface doc_str mod from
                                                    (length new_eps_rules) }
 
         ; return (Succeeded final_iface)
-    }}}}
+    }}}}}
 
 wantHiBootFile :: DynFlags -> ExternalPackageState -> Module -> WhereFrom
                -> MaybeErr MsgDoc IsBootInterface

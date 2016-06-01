@@ -1468,11 +1468,14 @@ mkIfLclEnv mod loc = IfLclEnv { if_mod     = mod,
 initIfaceTcRn :: IfG a -> TcRn a
 initIfaceTcRn thing_inside
   = do  { tcg_env <- getGblEnv
-        ; let { if_env = IfGblEnv {
-                            if_rec_types = Just (tcg_mod tcg_env, get_type_env)
-                         }
+        ; let { if_env = IfGblEnv { if_rec_types = rec_types }
+              ; rec_types = case tcg_self_boot tcg_env of
+                                SelfBoot {} ->
+                                    Just (tcg_mod tcg_env, get_type_env)
+                                NoSelfBoot  ->
+                                    Nothing
               ; get_type_env = readTcRef (tcg_type_env_var tcg_env) }
-        ; setEnvs (if_env, ()) thing_inside }
+        ; rec_types `seq` setEnvs (if_env, ()) thing_inside }
 
 initIfaceCheck :: HscEnv -> IfG a -> IO a
 -- Used when checking the up-to-date-ness of the old Iface
